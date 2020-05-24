@@ -12,10 +12,10 @@
 * ActionType:  0 = do nothing
 *              1 = ON when time (HH:MM) between Data[0]:Data[1] and Data[2]:Data[3] every day
 *              2 = ON every Data[2] minutes (max 120) with duration Data[2] minutes (max 120) starting at Data[0]:Data[1]
-*              3 = ON every Data[2] hours (max 12) with duration Data[3] minutes (max 120) starting at Data[0]:Data[1]
+*              3 = ON every Data[2] hours (max 18) with duration Data[3] minutes (max 120) starting at Data[0]:Data[1]
 *              4 = ON when time (HH:MM) between Data[0]:Data[1] and Data[2]:Data[3] only if day of week is active in Data[4] (bitmask)
 *              5 = ON every Data[2] minutes (max 120) with duration Data[3] minutes (max 120) starting at Data[0]:Data[1] only if day of week is active in Data[4] (bitmask)
-*              6 = ON every Data[2] hours (max 12) with duration Data[3] minutes (max 120) starting at Data[0]:Data[1] only if day of week is active in Data[4] (bitmask)
+*              6 = ON every Data[2] hours (max 18) with duration Data[3] minutes (max 120) starting at Data[0]:Data[1] only if day of week is active in Data[4] (bitmask)
 *              IF DHT11 INSTALLED:
 *              7 = ON when Temp below Data[0] , OFF when Temp above Data[1] 
 *                  E.g:  Data[0] : 5, Data[1] : 10
@@ -31,19 +31,21 @@
 // #define DEBUG_ON 1
 /* ************************************* */
 
-/* if you want relais Action types 7,8 (temp) and 9,10 (humidity) uncomment next line */
-#define DHT11_PRESENT 1
+/* if you want relais Action types 7,8 (temp) and 9,10 (humidity) uncomment next line and attach a DHT11 sensor*/
+// #define DHT11_PRESENT 1
 /* ************************************* */
 
 /* Number of relaises to drive */
-#define NUM_RELAISES 3
+#define NUM_RELAISES 8
 /* If relaises connected via I2C define address and presence */
-// #define I2C_RELAISES 1
+#define I2C_RELAISES 1
 /* ********************************************************* */
 
 #ifdef I2C_RELAISES
+// we have releaises connected via I2C: define address
 #define RELAIS_ADDRESS 0x03
 #else
+// we have eleaises connected to digital (or analogic) ports: initialize with port numbers
 static const uint8_t RELAIS_PINS[NUM_RELAISES] = {A1, A2, A3};
 #endif
 
@@ -54,11 +56,14 @@ static const uint8_t RELAIS_PINS[NUM_RELAISES] = {A1, A2, A3};
 #include <EEPROM.h>
 
 #ifdef DHT11_PRESENT
-
+// defines and includes for DHT11
 #include <SimpleDHT.h>
+// pin connected to DHT11 output
 #define PIN_DHT11 10
+// with DHT11, we have 10 actions
 #define MAX_ACTION 10
 #else
+// without DHT11, we have only 6 actions
 #define MAX_ACTION 6
 #endif
 
@@ -74,30 +79,28 @@ static const uint8_t RELAIS_PINS[NUM_RELAISES] = {A1, A2, A3};
 
 #define BACKLIGHT_ON 1
 #define BACKLIGHT_OFF 0
+
 #ifdef DHT11_PRESENT
+// I2C address of LCD : for me, changes because I have 2 boxes, one with DHT11 and LCD at 0x27,
+// the other without DHT11 but LCD at address 0x3F .. ;-)
 #define LCD_ADDRESS 0x27
 #else
 #define LCD_ADDRESS 0x3F
 #endif
-#define ANALOG_PORT A0
 
 #define LCD_ROWS 2
 #define LCD_COLUMNS 16
 
+// the MY_TAG define is to be sure that the data in EEPROM belongs to this sketch
 #define MY_TAG 30576
 
-// how many msecs stay on menu after last keypress
-#define MENU_TIMEOUT 20000L
 // Declariation of amount of time the display remains on (msecs)
 #define TIMER_DISPLAY 60000L
-// Declaration of every how many msecs we get the temperature (warning: the DHT11 permits only a read every 2 seconds!)
-#define TIMER_TEMP 5000L
-// Declaration of: every 1000 msec refresh display
-#define TIMER_SECS 1000L
 
 #define BACKLIGHT_ON 1
 #define BACKLIGHT_OFF 0
 
+// rows and cols of keypad
 const byte ROWS = 4; //four rows
 const byte COLS = 4; //four columns
 /* Constants strings to minimize memory used */
@@ -230,8 +233,6 @@ int GRADI[8] = {
 /* Timers */
 unsigned long timeStartDisplay = 0L;
 unsigned long timeStartMenu = 0L;
-unsigned long timeStartTemp = 0L;
-unsigned long timeSeconds = 0L;
 unsigned long currentMillis = 0L;
 
 byte bRelaysStatus = 0b11111111;
@@ -295,8 +296,6 @@ void setup()
 {
   int error;
 
-  pinMode(ANALOG_PORT, INPUT);
-
 #ifdef DEBUG_ON
   Serial.begin(9600);
 #endif
@@ -350,13 +349,18 @@ void setup()
     MyConfig.MODE = AUTO;
     for (int i = 0; i < NUM_RELAISES; i++)
     {
-      MyConfig.Relais[i].ActionType = 0;
-      MyConfig.Relais[i].CurrentStatus = OFF;
+      MyConfig.Relais[i].ActionType = 0;          // set Action to DO NOTHING
+      MyConfig.Relais[i].CurrentStatus = OFF;     // set relay to OFF
+#ifdef I2C_RELAISES      
       MyConfig.Relais[i].IO_PORT = i + 1;
-      for (int j = 0; j < 5; j++)
+#else
+      MyConfig.Relais[i].IO_PORT = RELAIS_PINS[i];
+#endif
+      for (int j = 0; j < 4; j++)
       {
-        MyConfig.Relais[i].Data[j] = 0;
+        MyConfig.Relais[i].Data[j] = 0x00;
       }
+      MyConfig.Relais[i].Data[4] = 0xFF;  // set all days of week to ACTIVE
     }
     EEPROM.put(0, MyConfig);
   }
@@ -370,8 +374,6 @@ void setup()
 
   currentMillis = millis();
   now = RTC.now();
-  timeStartTemp = currentMillis;
-  timeSeconds = currentMillis;
   timeStartDisplay = currentMillis;
 }
 
@@ -439,7 +441,7 @@ void loop()
           ch = customKeypad.getKey();
           if (ch)
           {
-            timeStartDisplay = currentMillis;
+            timeStartDisplay = millis();
             switch (ch)
             {
             case 'A':
@@ -499,7 +501,7 @@ void loop()
       last_check = now.unixtime();
 
 #ifdef DHT11_PRESENT
-      if (TempOrHumidity == false)
+      if (TempOrHumidity == false)  // just to flip temp and humidity on display every second
         TempOrHumidity = true;
       else
         TempOrHumidity = false;
@@ -670,6 +672,7 @@ void DisplayRelayData(int v)
       DisplayWeekData(v - 1, 5000);
     }
     break;
+#ifdef DHT11_PRESENT    
   case 7:
   case 8:
     sprintf(buf, RELAIS_PROMPT_9,v,(MyConfig.Relais[v - 1].ActionType % 2 == 0)?'>':'<',
@@ -690,6 +693,7 @@ void DisplayRelayData(int v)
                                     MyConfig.Relais[v - 1].Data[1],'%');
     lcd.print(buf);
     break;
+#endif
   }
   delay(5000);
 }
