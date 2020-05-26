@@ -1,6 +1,19 @@
 # Irrigatore
 Progetto Arduino per pilotare 8 relais con varie combinazioni temporali e/o temperatura e umidità
+Questo progetto è stato fatto per potere utilizzare alcune valvole da 1/2 pollice, a solenoide, a 12V.
+Può essere utile per irrigare l'orto a zone, e per ogni zona è possibile indicare la modalità del suo relais (vedi sotto)
+Lo stesso schetch lo ho installato in due progetti:
+- Per pilotare l'irrigazione dell'orto con un Arduino Nano, 8 relais pilotati via I2C i cui contatti sono alimentati a 12V per aprire o chiudere le valvole
+- Controllo serra (e luci di Natale ... ;-) ) Arduino Nano, 3 relais i cui contatti alimentano 3 prese 220V alle quali collego una stufina per mentenere la temperatura accettabile in una serra in inverno, e gli altri due relais pilotano un faro LED per illuminare le piantine di giorno e ... una catena di luminarie natalizie che si accendono la sera e si spengono la mattina ... ;-)
 
+# NOTA MOLTO IMPORTANTE
+Per questo progetto è stato utilizzata la piattaforma CODE con l'estensione PlatformIO, e non Arduino IDE.
+
+Per utilizzare il sorgente nell'IDE Arduino,è sufficiente:
+- Creare un nuovo sketch con Arduino IDE chiamandolo Irrigatore
+- Incollare il contenuto del file src/Irrigatore.cpp (oppure copiare detto file nella cartella del progetto e rinominarlo in Irrigatore.ino)
+
+# Descrizione
 Configurazioni possibili (#define nei sorgenti)
 - Numero dei relais: max 8
 - Modalità di pilotaggio (I2C o canali di output)
