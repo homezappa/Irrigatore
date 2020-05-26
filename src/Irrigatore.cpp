@@ -122,20 +122,40 @@ const char *BLANKROW = "                ";
 /*
  * ReleStruct: 
  */
+union FirstByte
+{
+    byte Hour;
+    byte Period;
+    byte TempOn;
+    byte HumOn;
+};
+union SecondByte
+{
+    byte Minute;
+    byte Duration;
+    byte TempOff;
+    byte HumOff;
+};
+
 struct ReleStruct
 {
-  byte ICON;
-  byte IO_PORT; // to do: used if no I2C
-  byte ActionType;
-  byte CurrentStatus;
-  byte Data[5];
+    byte ICON;
+    byte IO_PORT; // to do: used if no I2C
+    byte ActionType;
+    byte CurrentStatus;
+    FirstByte    Data1;
+    SecondByte   Data2;
+    FirstByte    Data3;
+    SecondByte   Data4;
+    byte         WeekFlags;
+//    byte Data[5];
 };
 struct Config
 {
-  int TAG;                         // integer to know if I saved before on eeprom
-  byte STATUS;                     // RUNNING, IN_MENU, etc ...
-  byte MODE;                       // MANUAL, AUTO
-  ReleStruct Relais[NUM_RELAISES]; // NUM_RELAISES relais
+    int TAG;                         // integer to know if I saved before on eeprom
+    byte STATUS;                     // RUNNING, IN_MENU, etc ...
+    byte MODE;                       // MANUAL, AUTO
+    ReleStruct Relais[NUM_RELAISES]; // NUM_RELAISES relais
 };
 
 char hexaKeys[ROWS][COLS] = {
@@ -294,917 +314,920 @@ byte b2byte(byte data[8]);
 
 void setup()
 {
-  int error;
+    int error;
 
 #ifdef DEBUG_ON
-  Serial.begin(9600);
+    Serial.begin(9600);
 #endif
-  Wire.begin();
-  Wire.beginTransmission(LCD_ADDRESS);
-  error = Wire.endTransmission();
-  if (error == 0)
-  {
-    lcd.begin(LCD_COLUMNS, LCD_ROWS); // initialize the lcd
-  }
-#ifdef DEBUG_ON
-  else
-  {
-    Serial.println("No LCD");
-  }
-#endif
-  lcd.init();
-  lcd.setBacklight(BACKLIGHT_ON);
-  lcd.createChar(GOCCIA_CHIUSO_CHAR, CHIUSO);
-  lcd.createChar(GOCCIA_APERTO_CHAR, APERTO);
-  lcd.createChar(LAMPADA_OFF_CHAR, LAMPADA_OFF);
-  lcd.createChar(LAMPADA_ON_CHAR, LAMPADA_ON);
-  lcd.createChar(GIORNO_OFF_CHAR, GIORNO_OFF);
-  lcd.createChar(GIORNO_ON_CHAR, GIORNO_ON);
-#ifdef DHT11_PRESENT
-  lcd.createChar(GRADI_CHAR, GRADI);
-#endif
-
-  RTC.begin();
-  if (!RTC.isrunning())
-  {
-    RTC.adjust(DateTime(__DATE__, __TIME__));
-  }
-#ifdef DEBUG_ON
-  Serial.println("Set Clock !");
-  RTC.adjust(DateTime(__DATE__, __TIME__));
-  Serial.println("Read Config");
-#endif
-  EEPROM.get(0, MyConfig);
-#ifdef DEBUG_ON
-  Serial.print("TAG:");
-  Serial.println((int)MyConfig.TAG);
-#endif
-  if ((int)MyConfig.TAG != (int)MY_TAG)
-  { // if TAG not equal to mine, set defaults and write
-#ifdef DEBUG_ON
-    Serial.println("No memory: set defaults");
-#endif
-    MyConfig.TAG = MY_TAG;
-    MyConfig.STATUS = LOOPING;
-    MyConfig.MODE = AUTO;
-    for (int i = 0; i < NUM_RELAISES; i++)
+    Wire.begin();
+    Wire.beginTransmission(LCD_ADDRESS);
+    error = Wire.endTransmission();
+    if (error == 0)
     {
-      MyConfig.Relais[i].ActionType = 0;          // set Action to DO NOTHING
-      MyConfig.Relais[i].CurrentStatus = OFF;     // set relay to OFF
-#ifdef I2C_RELAISES      
-      MyConfig.Relais[i].IO_PORT = i + 1;
-#else
-      MyConfig.Relais[i].IO_PORT = RELAIS_PINS[i];
-#endif
-      for (int j = 0; j < 4; j++)
-      {
-        MyConfig.Relais[i].Data[j] = 0x00;
-      }
-      MyConfig.Relais[i].Data[4] = 0xFF;  // set all days of week to ACTIVE
+        lcd.begin(LCD_COLUMNS, LCD_ROWS); // initialize the lcd
     }
-    EEPROM.put(0, MyConfig);
-  }
-  else
-  {
 #ifdef DEBUG_ON
-    Serial.println("Got values from memory!");
+    else
+    {
+        Serial.println("No LCD");
+    }
 #endif
-  }
-  SetupRelays();
+    lcd.init();
+    lcd.setBacklight(BACKLIGHT_ON);
+    lcd.createChar(GOCCIA_CHIUSO_CHAR, CHIUSO);
+    lcd.createChar(GOCCIA_APERTO_CHAR, APERTO);
+    lcd.createChar(LAMPADA_OFF_CHAR, LAMPADA_OFF);
+    lcd.createChar(LAMPADA_ON_CHAR, LAMPADA_ON);
+    lcd.createChar(GIORNO_OFF_CHAR, GIORNO_OFF);
+    lcd.createChar(GIORNO_ON_CHAR, GIORNO_ON);
+#ifdef DHT11_PRESENT
+    lcd.createChar(GRADI_CHAR, GRADI);
+#endif
 
-  currentMillis = millis();
-  now = RTC.now();
-  timeStartDisplay = currentMillis;
+    RTC.begin();
+    if (!RTC.isrunning())
+    {
+        RTC.adjust(DateTime(__DATE__, __TIME__));
+    }
+#ifdef DEBUG_ON
+    Serial.println("Set Clock !");
+    RTC.adjust(DateTime(__DATE__, __TIME__));
+    Serial.println("Read Config");
+#endif
+    EEPROM.get(0, MyConfig);
+#ifdef DEBUG_ON
+    Serial.print("TAG:");
+    Serial.println((int)MyConfig.TAG);
+#endif
+    if ((int)MyConfig.TAG != (int)MY_TAG)
+    { // if TAG not equal to mine, set defaults and write
+#ifdef DEBUG_ON
+        Serial.println("No memory: set defaults");
+#endif
+        MyConfig.TAG = MY_TAG;
+        MyConfig.STATUS = LOOPING;
+        MyConfig.MODE = AUTO;
+        for (int i = 0; i < NUM_RELAISES; i++)
+        {
+            MyConfig.Relais[i].ActionType = 0;      // set Action to DO NOTHING
+            MyConfig.Relais[i].CurrentStatus = OFF; // set relay to OFF
+#ifdef I2C_RELAISES
+            MyConfig.Relais[i].IO_PORT = i + 1;
+#else
+            MyConfig.Relais[i].IO_PORT = RELAIS_PINS[i];
+#endif
+            MyConfig.Relais[i].Data1.Hour = 0x00;
+            MyConfig.Relais[i].Data2.Minute = 0x00;
+            MyConfig.Relais[i].Data3.Hour = 0x00;
+            MyConfig.Relais[i].Data4.Minute = 0x00;
+            MyConfig.Relais[i].WeekFlags = 0xFF; // set all days of week to ACTIVE
+        }
+        EEPROM.put(0, MyConfig);
+    }
+    else
+    {
+#ifdef DEBUG_ON
+        Serial.println("Got values from memory!");
+#endif
+    }
+    SetupRelays();
+
+    currentMillis = millis();
+    now = RTC.now();
+    timeStartDisplay = currentMillis;
 }
 
 void loop()
 {
-  char lettera;
-  DateTime dt;
-  int v;
-  int NumRel;
-  char ch;
+    char lettera;
+    DateTime dt;
+    int v;
+    int NumRel;
+    char ch;
 
-  currentMillis = millis();
-  now = RTC.now();
+    currentMillis = millis();
+    now = RTC.now();
 
-  if (currentMillis > (timeStartDisplay + TIMER_DISPLAY))
-  {
-    lcd.setBacklight(BACKLIGHT_OFF);
-  }
-  lettera = customKeypad.getKey();
-  if (now.second() != lastSecond)
-  {
-    lastSecond = now.second();
-    DisplayTime(0, 0);
-    DisplayStatus();
-  }
-  if (lettera)
-  {
-    lcd.setBacklight(BACKLIGHT_ON);
-    timeStartDisplay = currentMillis;
-    if (MyConfig.STATUS == MANUAL)
+    if (currentMillis > (timeStartDisplay + TIMER_DISPLAY))
     {
-      switch (lettera)
-      {
-      case '1':
-      case '2':
-      case '3':
-      case '4':
-      case '5':
-      case '6':
-      case '7':
-      case '8':
-        NumRel = lettera - 48;
-        if (NumRel <= NUM_RELAISES)
+        lcd.setBacklight(BACKLIGHT_OFF);
+    }
+    lettera = customKeypad.getKey();
+    if (now.second() != lastSecond)
+    {
+        lastSecond = now.second();
+        DisplayTime(0, 0);
+        DisplayStatus();
+    }
+    if (lettera)
+    {
+        lcd.setBacklight(BACKLIGHT_ON);
+        timeStartDisplay = currentMillis;
+        if (MyConfig.STATUS == MANUAL)
         {
-          if (MyConfig.Relais[NumRel - 1].ActionType > 0)
-            ToggleRelais(NumRel);
+            switch (lettera)
+            {
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+                NumRel = lettera - 48;
+                if (NumRel <= NUM_RELAISES)
+                {
+                    if (MyConfig.Relais[NumRel - 1].ActionType > 0)
+                        ToggleRelais(NumRel);
+                }
+                break;
+            case 'A':
+                flipProgramStatus();
+                break;
+            }
         }
-        break;
-      case 'A':
-        flipProgramStatus();
-        break;
-      }
+        else
+        {
+            switch (lettera)
+            {
+            case 'A':
+                flipProgramStatus();
+                break;
+            case 'D': // menu
+                DisplayMenu();
+                do
+                {
+                    ch = customKeypad.getKey();
+                    if (ch)
+                    {
+                        timeStartDisplay = millis();
+                        switch (ch)
+                        {
+                        case 'A':
+                            do
+                            {
+                                v = getInputInt(RELAIS_PROMPT_8, 0, 0, NUM_RELAISES);
+                                if (v >= 1 && v <= NUM_RELAISES)
+                                {
+                                    DisplayRelayData(v);
+                                }
+                            } while (v > 0);
+                            DisplayMenu();
+                            break;
+                        case 'B':
+                            do
+                            {
+                                v = getInputInt(RELAIS_PROMPT_8, 0, 0, NUM_RELAISES);
+                                if (v >= 1 && v <= NUM_RELAISES)
+                                {
+                                    ConfigureRelayData(v);
+                                }
+                            } while (v > 0);
+                            DisplayMenu();
+                            break;
+                        case 'C':
+                        {
+                            int gg = now.day(),
+                                mm = now.month(),
+                                aa = now.year(),
+                                hh = now.hour(),
+                                mi = now.minute();
+                            gg = getInputInt("Set Giorno", gg, 1, 31);
+                            mm = getInputInt("Set Mese", mm, 1, 12);
+                            aa = getInputInt("Set Anno", aa, 2020, 2040);
+                            hh = getInputInt("Set Ora", hh, 0, 23);
+                            mi = getInputInt("Set Minuti", mi, 0, 59);
+                            RTC.adjust(DateTime(aa, mm, gg, hh, mi, 0));
+                        }
+                            DisplayMenu();
+                            break;
+                        }
+                    }
+                } while (ch != 'D');
+                lcd.clear();
+            }
+        }
     }
     else
     {
-      switch (lettera)
-      {
-      case 'A':
-        flipProgramStatus();
-        break;
-      case 'D': // menu
-        DisplayMenu();
-        do
+        if (now.unixtime() < last_check)
         {
-          ch = customKeypad.getKey();
-          if (ch)
-          {
-            timeStartDisplay = millis();
-            switch (ch)
-            {
-            case 'A':
-              do
-              {
-                v = getInputInt(RELAIS_PROMPT_8, 0, 0, NUM_RELAISES);
-                if (v >= 1 && v <= NUM_RELAISES)
-                {
-                  DisplayRelayData(v);
-                }
-              } while (v > 0);
-              DisplayMenu();
-              break;
-            case 'B':
-              do
-              {
-                v = getInputInt(RELAIS_PROMPT_8, 0, 0, NUM_RELAISES);
-                if (v >= 1 && v <= NUM_RELAISES)
-                {
-                  ConfigureRelayData(v);
-                }
-              } while (v > 0);
-              DisplayMenu();
-              break;
-            case 'C':
-            {
-              int gg = now.day(),
-                  mm = now.month(),
-                  aa = now.year(),
-                  hh = now.hour(),
-                  mi = now.minute();
-              gg = getInputInt("Set Giorno", gg, 1, 31);
-              mm = getInputInt("Set Mese", mm, 1, 12);
-              aa = getInputInt("Set Anno", aa, 2020, 2040);
-              hh = getInputInt("Set Ora", hh, 0, 23);
-              mi = getInputInt("Set Minuti", mi, 0, 59);
-              RTC.adjust(DateTime(aa, mm, gg, hh, mi, 0));
-            }
-              DisplayMenu();
-              break;
-            }
-          }
-        } while (ch != 'D');
-        lcd.clear();
-      }
-    }
-  }
-  else
-  {
-    if (now.unixtime() < last_check)
-    {
-      last_check = now.unixtime();
-    }
-    if ((now.unixtime() > last_check + 5) && (MyConfig.STATUS == AUTO))
-    {
+            last_check = now.unixtime();
+        }
+        if ((now.unixtime() > last_check + 5) && (MyConfig.STATUS == AUTO))
+        {
 
-      last_check = now.unixtime();
+            last_check = now.unixtime();
 
 #ifdef DHT11_PRESENT
-      if (TempOrHumidity == false)  // just to flip temp and humidity on display every second
-        TempOrHumidity = true;
-      else
-        TempOrHumidity = false;
-      DisplayTemp();
+            if (TempOrHumidity == false) // just to flip temp and humidity on display every second
+                TempOrHumidity = true;
+            else
+                TempOrHumidity = false;
+            DisplayTemp();
 #endif
 
-      for (int i = 0; i < NUM_RELAISES; i++)
-      {
-        switch (MyConfig.Relais[i].ActionType)
-        {
-        case 0:
-          break;
-        case 1:
-        case 4:
-          if (CheckTime(i) == ON)
-            RelaisON(i + 1);
-          else
-            RelaisOFF(i + 1);
-          break;
-        case 2:
-        case 3:
-        case 5:
-        case 6:
-          if (CheckPeriod(i) == ON)
-            RelaisON(i + 1);
-          else
-            RelaisOFF(i + 1);
-          break;
+            for (int i = 0; i < NUM_RELAISES; i++)
+            {
+                switch (MyConfig.Relais[i].ActionType)
+                {
+                case 0:
+                    break;
+                case 1:
+                case 4:
+                    if (CheckTime(i) == ON)
+                        RelaisON(i + 1);
+                    else
+                        RelaisOFF(i + 1);
+                    break;
+                case 2:
+                case 3:
+                case 5:
+                case 6:
+                    if (CheckPeriod(i) == ON)
+                        RelaisON(i + 1);
+                    else
+                        RelaisOFF(i + 1);
+                    break;
 #ifdef DHT11_PRESENT
-        case 7:
-        case 8:
-        case 9:
-        case 10:
-        {
-          int vv = CheckTempHumidity(i);
+                case 7:
+                case 8:
+                case 9:
+                case 10:
+                {
+                    int vv = CheckTempHumidity(i);
 #ifdef DEBUG_ON
-          Serial.print("Ret:");
-          Serial.println(vv);
+                    Serial.print("Ret:");
+                    Serial.println(vv);
 #endif
-          switch (vv)
-          {
-          case ON:
-            RelaisON(i + 1);
-            break;
-          case OFF:
-            RelaisOFF(i + 1);
-            break;
-          case DO_NOTHING:
-            break;
-          }
-        }
-        break;
+                    switch (vv)
+                    {
+                    case ON:
+                        RelaisON(i + 1);
+                        break;
+                    case OFF:
+                        RelaisOFF(i + 1);
+                        break;
+                    case DO_NOTHING:
+                        break;
+                    }
+                }
+                break;
 #endif
+                }
+            }
+            DriveRelays();
         }
-      }
-      DriveRelays();
     }
-  }
 }
 
 /* ******************* FUNCTIONS *********************** */
 void flipProgramStatus()
 {
-  if (MyConfig.STATUS == AUTO)
-  {
-    MyConfig.STATUS = MANUAL;
-  }
-  else
-  {
-    MyConfig.STATUS = AUTO;
-  }
+    if (MyConfig.STATUS == AUTO)
+    {
+        MyConfig.STATUS = MANUAL;
+    }
+    else
+    {
+        MyConfig.STATUS = AUTO;
+    }
 }
 void DisplayAll()
 {
-  DisplayTime();
-  DisplayStatus();
+    DisplayTime();
+    DisplayStatus();
 }
 void DisplayTime(int col, int row)
 {
-  lcd.setCursor(col, row);
-  lcd.print((now.timestamp(DateTime::TIMESTAMP_TIME)).substring(0, 5));
-  lcd.print((MyConfig.STATUS == AUTO) ? " AUTOMATICO" : "  MANUALE  ");
+    lcd.setCursor(col, row);
+    lcd.print((now.timestamp(DateTime::TIMESTAMP_TIME)).substring(0, 5));
+    lcd.print((MyConfig.STATUS == AUTO) ? " AUTOMATICO" : "  MANUALE  ");
 }
 
 void DisplayStatus(int col, int row)
 {
-  char buf[16];
-  lcd.setCursor(col, row);
-  for (int i = 0; i < NUM_RELAISES; i++)
-  {
-    if (MyConfig.Relais[i].ActionType > 0)
+    char buf[16];
+    lcd.setCursor(col, row);
+    for (int i = 0; i < NUM_RELAISES; i++)
     {
-      sprintf(buf, "%c", ((MyConfig.Relais[i].CurrentStatus == OFF)) ? MyConfig.Relais[i].ICON + 2 : MyConfig.Relais[i].ICON);
+        if (MyConfig.Relais[i].ActionType > 0)
+        {
+            sprintf(buf, "%c", ((MyConfig.Relais[i].CurrentStatus == OFF)) ? MyConfig.Relais[i].ICON + 2 : MyConfig.Relais[i].ICON);
+        }
+        else
+        {
+            sprintf(buf, "-");
+        }
+        lcd.print(buf);
     }
-    else
-    {
-      sprintf(buf, "-");
-    }
-    lcd.print(buf);
-  }
 }
 
 void DisplayWeekData(int relais, int waittime)
 {
-  char buf[16];
-  if (waittime > 0)
-  {
-    delay(waittime);
-    lcd.setCursor(7, 0);
-    lcd.print("  ");
-    lcd.setCursor(7, 1);
-    lcd.print("  ");
-  }
-  lcd.setCursor(9, 0);
-  lcd.print("DLMMGVS");
-  lcd.setCursor(9, 1);
-  for (int i = 0; i < 7; i++)
-  {
-    sprintf(buf, "%c", (bit_is_set(MyConfig.Relais[relais].Data[4], i)) ? GIORNO_ON_CHAR : GIORNO_OFF_CHAR);
-    lcd.print(buf);
-  }
+    char buf[16];
+    if (waittime > 0)
+    {
+        delay(waittime);
+        lcd.setCursor(7, 0);
+        lcd.print("  ");
+        lcd.setCursor(7, 1);
+        lcd.print("  ");
+    }
+    lcd.setCursor(9, 0);
+    lcd.print("DLMMGVS");
+    lcd.setCursor(9, 1);
+    for (int i = 0; i < 7; i++)
+    {
+        sprintf(buf, "%c", (bit_is_set(MyConfig.Relais[relais].WeekFlags, i)) ? GIORNO_ON_CHAR : GIORNO_OFF_CHAR);
+        lcd.print(buf);
+    }
 }
 
-void DisplayRelayData(int v)
+void DisplayRelayData(int R)
 {
-  char buf[32];
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  switch (MyConfig.Relais[v - 1].ActionType)
-  {
-  case 0:
-    sprintf(buf, "R:%d Disattivo", v);
-    lcd.print(buf);
-    break;
-  case 1:
-  case 4:
-    sprintf(buf, RELAIS_PROMPT_1, v, MyConfig.Relais[v - 1].ActionType, MyConfig.Relais[v - 1].Data[0], MyConfig.Relais[v - 1].Data[1]);
-    lcd.print(buf);
-    lcd.setCursor(0, 1);
-    sprintf(buf, RELAIS_PROMPT_2, MyConfig.Relais[v - 1].Data[2], MyConfig.Relais[v - 1].Data[3]);
-    lcd.print(buf);
-    if (MyConfig.Relais[v - 1].ActionType == 4)
+    char buf[32];
+    int v = R-1;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    switch (MyConfig.Relais[v].ActionType)
     {
-      DisplayWeekData(v - 1, 5000);
-    }
-    break;
-  case 2:
-  case 5:
-    sprintf(buf, RELAIS_PROMPT_1, v, MyConfig.Relais[v - 1].ActionType, MyConfig.Relais[v - 1].Data[0], MyConfig.Relais[v - 1].Data[1]);
-    lcd.print(buf);
-    lcd.setCursor(0, 1);
-    sprintf(buf, RELAIS_PROMPT_3, MyConfig.Relais[v - 1].Data[2], MyConfig.Relais[v - 1].Data[3]);
-    lcd.print(buf);
-    if (MyConfig.Relais[v - 1].ActionType == 5)
-    {
-      DisplayWeekData(v - 1, 5000);
-    }
-    break;
-  case 3:
-  case 6:
-    sprintf(buf, RELAIS_PROMPT_1, v, MyConfig.Relais[v - 1].ActionType, MyConfig.Relais[v - 1].Data[0], MyConfig.Relais[v - 1].Data[1]);
-    lcd.print(buf);
-    lcd.setCursor(0, 1);
-    sprintf(buf, RELAIS_PROMPT_4, MyConfig.Relais[v - 1].Data[2], MyConfig.Relais[v - 1].Data[3]);
-    lcd.print(buf);
-    if (MyConfig.Relais[v - 1].ActionType == 6)
-    {
-      DisplayWeekData(v - 1, 5000);
-    }
-    break;
-#ifdef DHT11_PRESENT    
-  case 7:
-  case 8:
-    sprintf(buf, RELAIS_PROMPT_9,v,(MyConfig.Relais[v - 1].ActionType % 2 == 0)?'>':'<',
-                                    MyConfig.Relais[v - 1].Data[0],GRADI_CHAR);
-    lcd.print(buf);
-    lcd.setCursor(0, 1);
-    sprintf(buf, RELAIS_PROMPT_10,MyConfig.Relais[v - 1].ActionType,(MyConfig.Relais[v - 1].ActionType % 2 == 0)?'<':'>',
-                                    MyConfig.Relais[v - 1].Data[1],GRADI_CHAR);
-    lcd.print(buf);
-    break;
-  case 9:
-  case 10:
-    sprintf(buf, RELAIS_PROMPT_11,v,(MyConfig.Relais[v - 1].ActionType % 2 == 0)?'>':'<',
-                                    MyConfig.Relais[v - 1].Data[0],'%');
-    lcd.print(buf);
-    lcd.setCursor(0, 1);
-    sprintf(buf, RELAIS_PROMPT_12,MyConfig.Relais[v - 1].ActionType,(MyConfig.Relais[v - 1].ActionType % 2 == 0)?'<':'>',
-                                    MyConfig.Relais[v - 1].Data[1],'%');
-    lcd.print(buf);
-    break;
+    case 0:
+        sprintf(buf, "R:%d Disattivo", R);
+        lcd.print(buf);
+        break;
+    case 1:
+    case 4:
+        sprintf(buf, RELAIS_PROMPT_1, R, MyConfig.Relais[v].ActionType, MyConfig.Relais[v].Data1.Hour, MyConfig.Relais[v].Data2.Minute);
+        lcd.print(buf);
+        lcd.setCursor(0, 1);
+        sprintf(buf, RELAIS_PROMPT_2, MyConfig.Relais[v].Data3.Hour, MyConfig.Relais[v].Data4.Minute);
+        lcd.print(buf);
+        if (MyConfig.Relais[v].ActionType == 4)
+        {
+            DisplayWeekData(v, 5000);
+        }
+        break;
+    case 2:
+    case 5:
+        sprintf(buf, RELAIS_PROMPT_1, R, MyConfig.Relais[v].ActionType, MyConfig.Relais[v].Data1.Hour, MyConfig.Relais[v].Data2.Minute);
+        lcd.print(buf);
+        lcd.setCursor(0, 1);
+        sprintf(buf, RELAIS_PROMPT_3, MyConfig.Relais[v].Data3.Period, MyConfig.Relais[v].Data4.Duration);
+        lcd.print(buf);
+        if (MyConfig.Relais[v].ActionType == 5)
+        {
+            DisplayWeekData(v, 5000);
+        }
+        break;
+    case 3:
+    case 6:
+        sprintf(buf, RELAIS_PROMPT_1, R, MyConfig.Relais[v].ActionType, MyConfig.Relais[v].Data1.Hour, MyConfig.Relais[v].Data2.Minute);
+        lcd.print(buf);
+        lcd.setCursor(0, 1);
+        sprintf(buf, RELAIS_PROMPT_4, MyConfig.Relais[v].Data3.Period, MyConfig.Relais[v].Data4.Duration);
+        lcd.print(buf);
+        if (MyConfig.Relais[v].ActionType == 6)
+        {
+            DisplayWeekData(v, 5000);
+        }
+        break;
+#ifdef DHT11_PRESENT
+    case 7:
+    case 8:
+        sprintf(buf, RELAIS_PROMPT_9, R, (MyConfig.Relais[v].ActionType % 2 == 0) ? '>' : '<',
+                MyConfig.Relais[v].Data1.TempOn, GRADI_CHAR);
+        lcd.print(buf);
+        lcd.setCursor(0, 1);
+        sprintf(buf, RELAIS_PROMPT_10, MyConfig.Relais[v].ActionType, (MyConfig.Relais[v].ActionType % 2 == 0) ? '<' : '>',
+                MyConfig.Relais[v].Data2.TempOff, GRADI_CHAR);
+        lcd.print(buf);
+        break;
+    case 9:
+    case 10:
+        sprintf(buf, RELAIS_PROMPT_11, R, (MyConfig.Relais[v].ActionType % 2 == 0) ? '>' : '<',
+                MyConfig.Relais[v].Data1.HumOn, '%');
+        lcd.print(buf);
+        lcd.setCursor(0, 1);
+        sprintf(buf, RELAIS_PROMPT_12, MyConfig.Relais[v].ActionType, (MyConfig.Relais[v].ActionType % 2 == 0) ? '<' : '>',
+                MyConfig.Relais[v].Data2.HumOff, '%');
+        lcd.print(buf);
+        break;
 #endif
-  }
-  delay(5000);
+    }
+    delay(5000);
 }
 
 void DisplayMenu()
 {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("A:Vedi B=Config.");
-  lcd.setCursor(0, 1);
-  lcd.print("C:Set Ora D:Fine");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("A:Vedi B=Config.");
+    lcd.setCursor(0, 1);
+    lcd.print("C:Set Ora D:Fine");
 }
-void ConfigureRelayData(int v)
+void ConfigureRelayData(int R)
 {
-  char buf[32];
-  int dato;
-  int action;
-  DateTime dt;
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  do
-  {
-    sprintf(buf, "R:%d Tipo ?", v);
-    action = getInputInt(buf, (int)MyConfig.Relais[v - 1].ActionType, 0, MAX_ACTION);
-    if (action > 0)
+    char buf[32];
+    int dato;
+    int action;
+    int v = R - 1;
+    DateTime dt;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    do
     {
-      sprintf(buf, "Icona? 1=%c 2=%c", GOCCIA_CHIUSO_CHAR, LAMPADA_OFF_CHAR);
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].ICON, 1, 2);
-      MyConfig.Relais[v - 1].ICON = dato;
-    }
-    switch (action)
-    {
-    case 0:
-      break;
-    case 1:
-    case 4:
-      sprintf(buf, "R:%d Ora Acceso?", v);
-      dt = getInputTime(buf, DateTime(2000, 1, 1, MyConfig.Relais[v - 1].Data[0], MyConfig.Relais[v - 1].Data[1], 0));
-      MyConfig.Relais[v - 1].Data[0] = dt.hour();
-      MyConfig.Relais[v - 1].Data[1] = dt.minute();
-      sprintf(buf, "R:%d Ora Spento?", v);
-      dt = getInputTime(buf, DateTime(2000, 1, 1, MyConfig.Relais[v - 1].Data[2], MyConfig.Relais[v - 1].Data[3], 0));
-      MyConfig.Relais[v - 1].Data[2] = dt.hour();
-      MyConfig.Relais[v - 1].Data[3] = dt.minute();
-      if (action == 4)
-      {
-        getInputWeek(v - 1);
-      }
-      else
-      {
-        MyConfig.Relais[v - 1].Data[4] = 0xFF;
-      }
-      break;
-    case 2:
-    case 5:
-      sprintf(buf, RELAIS_PROMPT_5, v);
-      dt = getInputTime(buf, DateTime(2000, 1, 1, MyConfig.Relais[v - 1].Data[0], MyConfig.Relais[v - 1].Data[1], 0));
-      MyConfig.Relais[v - 1].Data[0] = dt.hour();
-      MyConfig.Relais[v - 1].Data[1] = dt.minute();
-      sprintf(buf, RELAIS_PROMPT_7, v, 'm');
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[2], 5, 240);
-      MyConfig.Relais[v - 1].Data[2] = dato;
-      sprintf(buf, RELAIS_PROMPT_6, v);
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[3], 5, dato);
-      MyConfig.Relais[v - 1].Data[3] = dato;
-      if (action == 4)
-      {
-        getInputWeek(v - 1);
-      }
-      else
-      {
-        MyConfig.Relais[v - 1].Data[4] = 0xFF;
-      }
-      break;
-    case 3:
-    case 6:
-      sprintf(buf, RELAIS_PROMPT_5, v);
-      dt = getInputTime(buf, DateTime(2000, 1, 1, MyConfig.Relais[v - 1].Data[0], MyConfig.Relais[v - 1].Data[1], 0));
-      MyConfig.Relais[v - 1].Data[0] = dt.hour();
-      MyConfig.Relais[v - 1].Data[1] = dt.minute();
-      sprintf(buf, RELAIS_PROMPT_7, v, 'h');
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[2], 1, 18);
-      MyConfig.Relais[v - 1].Data[2] = dato;
-      sprintf(buf, RELAIS_PROMPT_6, v);
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[3], 5, ((dato * 60) > 240) ? 120 : dato * 60);
-      MyConfig.Relais[v - 1].Data[3] = dato;
-      if (action == 4)
-      {
-        getInputWeek(v - 1);
-      }
-      else
-      {
-        MyConfig.Relais[v - 1].Data[4] = 0xFF;
-      }
-      break;
+        sprintf(buf, "R:%d Tipo ?", R);
+        action = getInputInt(buf, (int)MyConfig.Relais[v].ActionType, 0, MAX_ACTION);
+        if (action > 0)
+        {
+            sprintf(buf, "Icona? 1=%c 2=%c", GOCCIA_CHIUSO_CHAR, LAMPADA_OFF_CHAR);
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].ICON, 1, 2);
+            MyConfig.Relais[v].ICON = dato;
+        }
+        switch (action)
+        {
+        case 0:
+            break;
+        case 1:
+        case 4:
+            sprintf(buf, "R:%d Ora Acceso?", R);
+            dt = getInputTime(buf, DateTime(2000, 1, 1, MyConfig.Relais[v].Data1.Hour, MyConfig.Relais[v].Data2.Minute, 0));
+            MyConfig.Relais[v].Data1.Hour = dt.hour();
+            MyConfig.Relais[v].Data2.Minute = dt.minute();
+            sprintf(buf, "R:%d Ora Spento?", R);
+            dt = getInputTime(buf, DateTime(2000, 1, 1, MyConfig.Relais[v].Data3.Hour, MyConfig.Relais[v].Data4.Minute, 0));
+            MyConfig.Relais[v].Data3.Hour = dt.hour();
+            MyConfig.Relais[v].Data4.Minute = dt.minute();
+            if (action == 4)
+            {
+                getInputWeek(v);
+            }
+            else
+            {
+                MyConfig.Relais[v].WeekFlags = 0xFF;
+            }
+            break;
+        case 2:
+        case 5:
+            sprintf(buf, RELAIS_PROMPT_5, R);
+            dt = getInputTime(buf, DateTime(2000, 1, 1, MyConfig.Relais[v].Data1.Hour, MyConfig.Relais[v].Data2.Minute, 0));
+            MyConfig.Relais[v].Data1.Hour = dt.hour();
+            MyConfig.Relais[v].Data2.Minute = dt.minute();
+            sprintf(buf, RELAIS_PROMPT_7, R, 'm');
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data3.Period, 5, 240);
+            MyConfig.Relais[v].Data3.Period = dato;
+            sprintf(buf, RELAIS_PROMPT_6, R);
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data4.Duration, 5, dato);
+            MyConfig.Relais[v].Data4.Duration = dato;
+            if (action == 4)
+            {
+                getInputWeek(v);
+            }
+            else
+            {
+                MyConfig.Relais[v].WeekFlags = 0xFF;
+            }
+            break;
+        case 3:
+        case 6:
+            sprintf(buf, RELAIS_PROMPT_5, R);
+            dt = getInputTime(buf, DateTime(2000, 1, 1, MyConfig.Relais[v].Data1.Hour, MyConfig.Relais[v].Data2.Minute, 0));
+            MyConfig.Relais[v].Data1.Hour = dt.hour();
+            MyConfig.Relais[v].Data2.Minute = dt.minute();
+            sprintf(buf, RELAIS_PROMPT_7, R, 'h');
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data3.Period, 1, 18);
+            MyConfig.Relais[v].Data3.Period = dato;
+            sprintf(buf, RELAIS_PROMPT_6, R);
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data4.Duration, 5, ((dato * 60) > 240) ? 120 : dato * 60);
+            MyConfig.Relais[v].Data4.Duration = dato;
+            if (action == 4)
+            {
+                getInputWeek(v);
+            }
+            else
+            {
+                MyConfig.Relais[v].WeekFlags = 0xFF;
+            }
+            break;
 #ifdef DHT11_PRESENT
-    case 7:
-      sprintf(buf, "On se Temp.<%cC", GRADI_CHAR);
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[0], 0, 60);
-      MyConfig.Relais[v - 1].Data[0] = dato;
-      sprintf(buf, "Off se Temp>%cC", GRADI_CHAR);
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[1], dato, 60);
-      MyConfig.Relais[v - 1].Data[1] = dato;
-      break;
-    case 8:
-      sprintf(buf, "On se Temp.>%cC", GRADI_CHAR);
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[0], 0, 60);
-      MyConfig.Relais[v - 1].Data[0] = dato;
-      sprintf(buf, "Off se Temp<%cC", GRADI_CHAR);
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[1], 0, dato);
-      MyConfig.Relais[v - 1].Data[1] = dato;
-      break;
-    case 9:
-      sprintf(buf, "On se Umid.< %c", '%');
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[0], 0, 100);
-      MyConfig.Relais[v - 1].Data[0] = dato;
-      sprintf(buf, "Off se Umid.> %c", '%');
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[1], dato, 100);
-      MyConfig.Relais[v - 1].Data[1] = dato;
-      break;
-    case 10:
-      sprintf(buf, "On se Umid.> %c", '%');
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[0], 0, 100);
-      MyConfig.Relais[v - 1].Data[0] = dato;
-      sprintf(buf, "Off se Umid.< %c", '%');
-      dato = getInputInt(buf, (int)MyConfig.Relais[v - 1].Data[1], 0, dato);
-      MyConfig.Relais[v - 1].Data[1] = dato;
-      break;
+        case 7:
+            sprintf(buf, "On se Temp.<%cC", GRADI_CHAR);
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data1.TempOn, 0, 60);
+            MyConfig.Relais[v].Data1.TempOn = dato;
+            sprintf(buf, "Off se Temp>%cC", GRADI_CHAR);
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data2.TempOff, dato, 60);
+            MyConfig.Relais[v].Data2.TempOff = dato;
+            break;
+        case 8:
+            sprintf(buf, "On se Temp.>%cC", GRADI_CHAR);
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data1.TempOn, 0, 60);
+            MyConfig.Relais[v].Data1.TempOn = dato;
+            sprintf(buf, "Off se Temp<%cC", GRADI_CHAR);
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data2.TempOff, 0, dato);
+            MyConfig.Relais[v].Data2.TempOff = dato;
+            break;
+        case 9:
+            sprintf(buf, "On se Umid.< %c", '%');
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data1.HumOn, 0, 100);
+            MyConfig.Relais[v].Data1.HumOn = dato;
+            sprintf(buf, "Off se Umid.> %c", '%');
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data2.HumOff, dato, 100);
+            MyConfig.Relais[v].Data2.HumOff = dato;
+            break;
+        case 10:
+            sprintf(buf, "On se Umid.> %c", '%');
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data1.HumOn, 0, 100);
+            MyConfig.Relais[v].Data1.HumOn = dato;
+            sprintf(buf, "Off se Umid.< %c", '%');
+            dato = getInputInt(buf, (int)MyConfig.Relais[v].Data2.HumOff, 0, dato);
+            MyConfig.Relais[v].Data2.HumOff = dato;
+            break;
 #endif
-    default:
-      break;
-    }
-  } while (action > MAX_ACTION);
-  MyConfig.Relais[v - 1].ActionType = action;
-  EEPROM.put(0, MyConfig);
+        default:
+            break;
+        }
+    } while (action > MAX_ACTION);
+    MyConfig.Relais[v].ActionType = action;
+    EEPROM.put(0, MyConfig);
 }
 
 void getInputWeek(int relais)
 {
-  char lettera;
+    char lettera;
 
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("1-7:set");
-  lcd.setCursor(0, 1);
-  lcd.print("A:Save");
-  DisplayWeekData(relais);
-  do
-  {
-    lettera = customKeypad.getKey();
-    if (lettera)
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("1-7:set");
+    lcd.setCursor(0, 1);
+    lcd.print("A:Save");
+    DisplayWeekData(relais);
+    do
     {
-      switch (lettera)
-      {
-      case '1':
-      case '2':
-      case '3':
-      case '4':
-      case '5':
-      case '6':
-      case '7':
-        ToggleWeekBit(relais, lettera - 49);
-        break;
-      case 'A':
-        break;
-      }
-      if (lettera == 'A')
-      {
-        EEPROM.put(0, MyConfig);
-        break;
-      }
-      DisplayWeekData(relais);
-    }
-  } while (true); // until not a correct number
-  lcd.clear();
-  lcd.noBlink();
-  lcd.noCursor();
+        lettera = customKeypad.getKey();
+        if (lettera)
+        {
+            switch (lettera)
+            {
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+                ToggleWeekBit(relais, lettera - 49);
+                break;
+            case 'A':
+                break;
+            }
+            if (lettera == 'A')
+            {
+                EEPROM.put(0, MyConfig);
+                break;
+            }
+            DisplayWeekData(relais);
+        }
+    } while (true); // until not a correct number
+    lcd.clear();
+    lcd.noBlink();
+    lcd.noCursor();
 }
 
 int getInputInt(String prompt, int defval, int minval, int maxval)
 {
-  char lettera;
-  int pos = 0, retVal;
-  char sTemp[16];
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(prompt);
-  if (defval != -1)
-  {
-    itoa(defval, sTemp, 10);
-    lcd.setCursor(0, 1);
-    lcd.print(sTemp);
-  }
-  do
-  {
-    lcd.setCursor(pos, 1);
-    lcd.blink();
-    lettera = customKeypad.getKey();
-    if ((lettera >= '0') && (lettera <= '9'))
+    char lettera;
+    int pos = 0, retVal;
+    char sTemp[16];
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(prompt);
+    if (defval != -1)
     {
-      lcd.print(lettera);
-      sTemp[pos] = lettera;
-      pos++;
+        itoa(defval, sTemp, 10);
+        lcd.setCursor(0, 1);
+        lcd.print(sTemp);
     }
-    if (lettera == 'C') // Clear
+    do
     {
-      pos = 0;
-      lcd.setCursor(pos, 1);
-      lcd.print(BLANKROW);
-      memset(sTemp, 0, 16);
-    }
-    if (lettera == '#') //Enter
-    {
-      retVal = String(sTemp).toInt();
-      if (retVal < minval)
-        displayMessage("Min." + String(minval));
-      else if (retVal > maxval)
-        displayMessage("Max." + String(maxval));
-      else
-        break;
-    }
-  } while (true); // until not a correct number
-  lcd.clear();
-  lcd.noBlink();
-  lcd.noCursor();
-  return retVal;
+        lcd.setCursor(pos, 1);
+        lcd.blink();
+        lettera = customKeypad.getKey();
+        if ((lettera >= '0') && (lettera <= '9'))
+        {
+            lcd.print(lettera);
+            sTemp[pos] = lettera;
+            pos++;
+        }
+        if (lettera == 'C') // Clear
+        {
+            pos = 0;
+            lcd.setCursor(pos, 1);
+            lcd.print(BLANKROW);
+            memset(sTemp, 0, 16);
+        }
+        if (lettera == '#') //Enter
+        {
+            retVal = String(sTemp).toInt();
+            if (retVal < minval)
+                displayMessage("Min." + String(minval));
+            else if (retVal > maxval)
+                displayMessage("Max." + String(maxval));
+            else
+                break;
+        }
+    } while (true); // until not a correct number
+    lcd.clear();
+    lcd.noBlink();
+    lcd.noCursor();
+    return retVal;
 }
 DateTime getInputTime(String prompt, DateTime defval)
 {
 
-  char lettera;
-  int pos = 0;
-  char sTemph[16];
-  char sTempm[16];
-  int h, m;
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(prompt);
-  lcd.setCursor(2, 1);
-  lcd.print(":");
+    char lettera;
+    int pos = 0;
+    char sTemph[16];
+    char sTempm[16];
+    int h, m;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(prompt);
+    lcd.setCursor(2, 1);
+    lcd.print(":");
 
-  if (defval != DateTime(2000, 1, 1, 0, 0, 0))
-  {
-    char buffer[16];
-    sprintf(buffer, "%02d:%02d", defval.hour(), defval.minute());
-    lcd.setCursor(0, 1);
-    lcd.print(buffer);
-    pos = 0;
-    itoa(defval.hour(), sTemph, 10);
-    itoa(defval.minute(), sTempm, 10);
-  }
-  /* ore ... 2 cifre */
-  do
-  {
+    if (defval != DateTime(2000, 1, 1, 0, 0, 0))
+    {
+        char buffer[16];
+        sprintf(buffer, "%02d:%02d", defval.hour(), defval.minute());
+        lcd.setCursor(0, 1);
+        lcd.print(buffer);
+        pos = 0;
+        itoa(defval.hour(), sTemph, 10);
+        itoa(defval.minute(), sTempm, 10);
+    }
+    /* ore ... 2 cifre */
     do
     {
-      lcd.setCursor(pos, 1);
-      lcd.blink();
-      lettera = customKeypad.getKey();
-      if ((lettera >= '0') && (lettera <= '9'))
-      {
-        lcd.print(lettera);
-        if (pos < 2)
-          sTemph[pos] = lettera;
+        do
+        {
+            lcd.setCursor(pos, 1);
+            lcd.blink();
+            lettera = customKeypad.getKey();
+            if ((lettera >= '0') && (lettera <= '9'))
+            {
+                lcd.print(lettera);
+                if (pos < 2)
+                    sTemph[pos] = lettera;
+                else
+                    sTempm[pos - 3] = lettera;
+                switch (pos)
+                {
+                case 1:
+                    pos++;
+                case 0:
+                case 3:
+                    pos++;
+                }
+            }
+            if (lettera == '*')
+            {
+                switch (pos)
+                {
+                case 3:
+                    pos--;
+                case 1:
+                case 4:
+                    pos--;
+                }
+            }
+            if (lettera == 'C')
+            {
+                pos = 0;
+                lcd.setCursor(pos, 1);
+                lcd.print(BLANKROW);
+                lcd.setCursor(2, 1);
+                lcd.print(":");
+                memset(sTemph, 0, 16);
+                memset(sTempm, 0, 16);
+            }
+        } while (lettera != '#');
+        h = String(sTemph).toInt();
+        m = String(sTempm).toInt();
+        if (h >= 24)
+            displayMessage("Err.Ora:" + String(h));
+        else if (m >= 60)
+            displayMessage("Err.Min:" + String(m));
         else
-          sTempm[pos - 3] = lettera;
-        switch (pos)
-        {
-        case 1:
-          pos++;
-        case 0:
-        case 3:
-          pos++;
-        }
-      }
-      if (lettera == '*')
-      {
-        switch (pos)
-        {
-        case 3:
-          pos--;
-        case 1:
-        case 4:
-          pos--;
-        }
-      }
-      if (lettera == 'C')
-      {
-        pos = 0;
-        lcd.setCursor(pos, 1);
-        lcd.print(BLANKROW);
-        lcd.setCursor(2, 1);
-        lcd.print(":");
-        memset(sTemph, 0, 16);
-        memset(sTempm, 0, 16);
-      }
-    } while (lettera != '#');
-    h = String(sTemph).toInt();
-    m = String(sTempm).toInt();
-    if (h >= 24)
-      displayMessage("Err.Ora:" + String(h));
-    else if (m >= 60)
-      displayMessage("Err.Min:" + String(m));
-    else
-      break;
-  } while (true);
-  lcd.clear();
-  lcd.noBlink();
-  lcd.noCursor();
-  return DateTime(2000, 1, 1, h, m, 0);
+            break;
+    } while (true);
+    lcd.clear();
+    lcd.noBlink();
+    lcd.noCursor();
+    return DateTime(2000, 1, 1, h, m, 0);
 }
 void displayMessage(String mess)
 {
-  lcd.setCursor(6, 1);
-  lcd.print(mess);
-  delay(1000);
-  lcd.setCursor(6, 1);
-  lcd.print("          ");
+    lcd.setCursor(6, 1);
+    lcd.print(mess);
+    delay(1000);
+    lcd.setCursor(6, 1);
+    lcd.print("          ");
 }
 
 void RelaisON(byte index)
 {
-  if (index > 0 && index <= NUM_RELAISES)
-  {
-    MyConfig.Relais[index - 1].CurrentStatus = ON;
-  }
+    if (index > 0 && index <= NUM_RELAISES)
+    {
+        MyConfig.Relais[index - 1].CurrentStatus = ON;
+    }
 }
 void RelaisOFF(byte index)
 {
-  if (index > 0 && index <= NUM_RELAISES)
-  {
-    MyConfig.Relais[index - 1].CurrentStatus = OFF;
-  }
+    if (index > 0 && index <= NUM_RELAISES)
+    {
+        MyConfig.Relais[index - 1].CurrentStatus = OFF;
+    }
 }
 void ToggleRelais(byte index)
 {
-  if (index > 0 && index <= NUM_RELAISES)
-  {
-    if (MyConfig.Relais[index - 1].CurrentStatus == OFF)
+    if (index > 0 && index <= NUM_RELAISES)
     {
-      MyConfig.Relais[index - 1].CurrentStatus = ON;
+        if (MyConfig.Relais[index - 1].CurrentStatus == OFF)
+        {
+            MyConfig.Relais[index - 1].CurrentStatus = ON;
+        }
+        else
+        {
+            MyConfig.Relais[index - 1].CurrentStatus = OFF;
+        }
+        DriveRelays();
     }
-    else
-    {
-      MyConfig.Relais[index - 1].CurrentStatus = OFF;
-    }
-    DriveRelays();
-  }
 }
 byte CheckPeriod(int R)
 {
-  DateTime tStartTime, tStartPeriod, tEndPeriod;
-  TimeSpan tSpanPeriod, tSpanDuration;
+    DateTime tStartTime, tStartPeriod, tEndPeriod;
+    TimeSpan tSpanPeriod, tSpanDuration;
 
-  if (bit_is_clear(MyConfig.Relais[R].Data[4], now.dayOfTheWeek()))
-  {
-    return OFF;
-  }
-  switch (MyConfig.Relais[R].ActionType)
-  {
-  case 2:
-  case 5:
-    tSpanPeriod = TimeSpan(0, 0, (int)MyConfig.Relais[R].Data[2], 0); //Period in minutes
-    break;
-  case 3:
-  case 6:
-    tSpanPeriod = TimeSpan(0, (int)MyConfig.Relais[R].Data[2], 0, 0); //Period in hours
-    break;
-  default:
-    return OFF; // only for ActionType 2 and 3
-  }
-  tSpanDuration = TimeSpan(0, 0, (int)MyConfig.Relais[R].Data[3], 0); // Duration in minutes
-  tStartTime = tStartPeriod = DateTime(now.year(), now.month(), now.day(), MyConfig.Relais[R].Data[0], MyConfig.Relais[R].Data[1], 0);
-  if (tStartTime > now)
-    return OFF;
-  tEndPeriod = tStartPeriod + tSpanDuration;
-  if (tEndPeriod > now)
-    return ON;
-  while (tEndPeriod < now)
-  {
-    tEndPeriod = tEndPeriod + tSpanPeriod;
-  }
-  tStartPeriod = tEndPeriod - tSpanDuration;
-
+    if (bit_is_clear(MyConfig.Relais[R].WeekFlags, now.dayOfTheWeek()))
+    {
+        return OFF;
+    }
+    switch (MyConfig.Relais[R].ActionType)
+    {
+    case 2:
+    case 5:
+        tSpanPeriod = TimeSpan(0, 0, (int)MyConfig.Relais[R].Data3.Period, 0); //Period in minutes
+        break;
+    case 3:
+    case 6:
+        tSpanPeriod = TimeSpan(0, (int)MyConfig.Relais[R].Data3.Period, 0, 0); //Period in hours
+        break;
+    default:
+        return OFF; // only for ActionType 2 and 3
+    }
+    tSpanDuration = TimeSpan(0, 0, (int)MyConfig.Relais[R].Data4.Duration, 0); // Duration in minutes
+    tStartTime = tStartPeriod = DateTime(now.year(), now.month(), now.day(), MyConfig.Relais[R].Data1.Hour, MyConfig.Relais[R].Data2.Minute, 0);
+    if (tStartTime > now) // we are BEFORE
+        return OFF;
+    tEndPeriod = tStartPeriod + tSpanDuration;
+    if (tEndPeriod > now)
+        return ON;
+    // check for next period
+    do
+    {
+        tEndPeriod = tEndPeriod + tSpanPeriod;
+        if (tEndPeriod.day() != now.day())
+            break;
+    } while (tEndPeriod < now);
+    tStartPeriod = tEndPeriod - tSpanDuration;
 #ifdef DEBUG_ON
-  Serial.print("Relais ");
-  Serial.print(R);
-  Serial.print(" Next start: ");
-  Serial.print(tStartPeriod.timestamp());
-  Serial.print(" Next end: ");
-  Serial.println(tEndPeriod.timestamp());
+    Serial.print("Relais ");
+    Serial.print(R);
+    Serial.print(" Next start: ");
+    Serial.print(tStartPeriod.timestamp());
+    Serial.print(" Next end: ");
+    Serial.println(tEndPeriod.timestamp());
 #endif
-
-  if ((now > tStartPeriod) && (now < tEndPeriod))
-    return ON;
-  return OFF;
+    if ((now > tStartPeriod) && (now < tEndPeriod))
+        return ON;
+    return OFF;
 }
 byte CheckTime(int R)
 {
-  DateTime tStartTime, tEndTime;
+    DateTime tStartTime, tEndTime;
 
 #ifdef DEBUG_ON
-  Serial.println(now.dayOfTheWeek());
+    Serial.println(now.dayOfTheWeek());
 #endif
-  if (bit_is_clear(MyConfig.Relais[R].Data[4], now.dayOfTheWeek()))
-  {
+    if (bit_is_clear(MyConfig.Relais[R].WeekFlags, now.dayOfTheWeek()))
+    {
+        return OFF;
+    }
+
+    tStartTime = DateTime(now.year(), now.month(), now.day(), MyConfig.Relais[R].Data1.Hour, MyConfig.Relais[R].Data2.Minute, 0);
+    tEndTime = DateTime(now.year(), now.month(), now.day(), MyConfig.Relais[R].Data3.Hour, MyConfig.Relais[R].Data4.Minute, 0);
+
+#ifdef DEBUG_ON
+    Serial.print("Relais ");
+    Serial.print(R);
+    Serial.print(" Next start: ");
+    Serial.print(tStartTime.timestamp());
+    Serial.print(" Next end: ");
+    Serial.println(tEndTime.timestamp());
+#endif
+
+    if (tEndTime > tStartTime)
+    {
+        if ((now > tStartTime) && (now < tEndTime)) // during day
+            return ON;
+    }
+    else
+    {
+        if ((now > tStartTime) || (now < tEndTime)) // crossing midnight
+            return ON;
+    }
     return OFF;
-  }
-
-  tStartTime = DateTime(now.year(), now.month(), now.day(), MyConfig.Relais[R].Data[0], MyConfig.Relais[R].Data[1], 0);
-  tEndTime = DateTime(now.year(), now.month(), now.day(), MyConfig.Relais[R].Data[2], MyConfig.Relais[R].Data[3], 0);
-
-#ifdef DEBUG_ON
-  Serial.print("Relais ");
-  Serial.print(R);
-  Serial.print(" Next start: ");
-  Serial.print(tStartTime.timestamp());
-  Serial.print(" Next end: ");
-  Serial.println(tEndTime.timestamp());
-#endif
-
-  if (tEndTime > tStartTime)
-  {
-    if ((now > tStartTime) && (now < tEndTime)) // during day
-      return ON;
-  }
-  else
-  {
-    if ((now > tStartTime) || (now < tEndTime)) // crossing midnight
-      return ON;
-  }
-  return OFF;
 }
 
 #ifdef I2C_RELAISES
 void SetupRelays(byte addr)
 {
-  bRelaysStatus = bAllOff;
-  MCP_Write(addr, 0x00, 0b00000000);    //  set all pins to output
-  MCP_Write(addr, 0x12, bRelaysStatus); //  set all outputs to off
+    bRelaysStatus = bAllOff;
+    MCP_Write(addr, 0x00, 0b00000000);    //  set all pins to output
+    MCP_Write(addr, 0x12, bRelaysStatus); //  set all outputs to off
 }
 void DriveRelays(byte addr)
 {
-  bRelaysStatus = bAllOff;
-  for (int i = 0; i < NUM_RELAISES; i++)
-  {
-    if (MyConfig.Relais[i].CurrentStatus == OFF)
+    bRelaysStatus = bAllOff;
+    for (int i = 0; i < NUM_RELAISES; i++)
     {
-      bitSet(bRelaysStatus, i);
+        if (MyConfig.Relais[i].CurrentStatus == OFF)
+        {
+            bitSet(bRelaysStatus, i);
+        }
+        else
+        {
+            bitClear(bRelaysStatus, i);
+        }
     }
-    else
-    {
-      bitClear(bRelaysStatus, i);
-    }
-  }
-  MCP_Write(addr, 0x12, bRelaysStatus); //  set all outputs, for I2C relais
+    MCP_Write(addr, 0x12, bRelaysStatus); //  set all outputs, for I2C relais
 }
 #else
 void SetupRelays()
 {
-  for (int i = 0; i < NUM_RELAISES; i++)
-  {
-    pinMode(RELAIS_PINS[i], OUTPUT);
-    digitalWrite(RELAIS_PINS[i], HIGH);
-  }
+    for (int i = 0; i < NUM_RELAISES; i++)
+    {
+        pinMode(RELAIS_PINS[i], OUTPUT);
+        digitalWrite(RELAIS_PINS[i], HIGH);
+    }
 }
 void DriveRelays()
 {
-  for (int i = 0; i < NUM_RELAISES; i++)
-  {
-    digitalWrite(RELAIS_PINS[i], (MyConfig.Relais[i].CurrentStatus == OFF) ? HIGH : LOW);
-  }
+    for (int i = 0; i < NUM_RELAISES; i++)
+    {
+        digitalWrite(RELAIS_PINS[i], (MyConfig.Relais[i].CurrentStatus == OFF) ? HIGH : LOW);
+    }
 }
 #endif
 void ToggleWeekBit(int relais, int i)
 {
 #ifdef DEBUG_ON
-  char buf[16];
-  sprintf(buf, "R:%d B:%x", relais, MyConfig.Relais[relais].Data[4]);
-  Serial.println(buf);
+    char buf[16];
+    sprintf(buf, "R:%d B:%x", relais, MyConfig.Relais[relais].WeekFlags);
+    Serial.println(buf);
 #endif
-  if (bit_is_clear(MyConfig.Relais[relais].Data[4], i))
-  {
-    bitSet(MyConfig.Relais[relais].Data[4], i);
-  }
-  else
-  {
-    bitClear(MyConfig.Relais[relais].Data[4], i);
-  }
+    if (bit_is_clear(MyConfig.Relais[relais].WeekFlags, i))
+    {
+        bitSet(MyConfig.Relais[relais].WeekFlags, i);
+    }
+    else
+    {
+        bitClear(MyConfig.Relais[relais].WeekFlags, i);
+    }
 #ifdef DEBUG_ON
-  sprintf(buf, "R:%d A:%x", relais, MyConfig.Relais[relais].Data[4]);
-  Serial.println(buf);
+    sprintf(buf, "R:%d A:%x", relais, MyConfig.Relais[relais].WeekFlags);
+    Serial.println(buf);
 #endif
 }
 
 void WriteRelays(byte address, byte data)
 {
-  // Write data to relays
-  // --------------------
-  MCP_Write(address, 0x12, data);
+    // Write data to relays
+    // --------------------
+    MCP_Write(address, 0x12, data);
 }
 
 void MCP_Write(byte MCPaddress, byte MCPregister, byte MCPdata)
 {
-  // I2C write routine
-  // -----------------
-  MCPaddress = MCPaddress + 0x20; // 0x20 is base address for MCP
-  Wire.beginTransmission(MCPaddress);
-  Wire.write(MCPregister);
-  Wire.write(MCPdata);
-  Wire.endTransmission();
+    // I2C write routine
+    // -----------------
+    MCPaddress = MCPaddress + 0x20; // 0x20 is base address for MCP
+    Wire.beginTransmission(MCPaddress);
+    Wire.write(MCPregister);
+    Wire.write(MCPdata);
+    Wire.endTransmission();
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // End of MCP routines
@@ -1214,155 +1237,154 @@ void MCP_Write(byte MCPaddress, byte MCPregister, byte MCPdata)
 
 byte CheckTempHumidity(int R)
 {
-  byte ValueLimitLow;
-  byte ValueLimitHigh;
-  ValueLimitLow = MyConfig.Relais[R].Data[0];
-  ValueLimitHigh = MyConfig.Relais[R].Data[1];
+    byte ValueLimitLow;
+    byte ValueLimitHigh;
+    ValueLimitLow = MyConfig.Relais[R].Data1.TempOn;
+    ValueLimitHigh = MyConfig.Relais[R].Data2.TempOff;
 #ifdef DEBUG_ON
-  Serial.print("Relais:");
-  Serial.println(R);
-  Serial.print("Action:");
-  Serial.println(MyConfig.Relais[R].ActionType);
-#endif
-  if ((int)MyConfig.Relais[R].ActionType == 7)
-  {
-#ifdef DEBUG_ON
+    Serial.print("Relais:");
+    Serial.println(R);
     Serial.print("Action:");
     Serial.println(MyConfig.Relais[R].ActionType);
-    Serial.print("Low:");
-    Serial.println(ValueLimitLow);
-    Serial.print("High:");
-    Serial.println(ValueLimitHigh);
-    Serial.print("Temp:");
-    Serial.println(temperature);
-    Serial.print("Temp2:");
-    Serial.println(temperature2);
 #endif
-    if (temperature2 > 127)
+    if ((int)MyConfig.Relais[R].ActionType == 7)
     {
-      return ON; // Se sottozero, torna sempre ON !!
+#ifdef DEBUG_ON
+        Serial.print("Action:");
+        Serial.println(MyConfig.Relais[R].ActionType);
+        Serial.print("Low:");
+        Serial.println(ValueLimitLow);
+        Serial.print("High:");
+        Serial.println(ValueLimitHigh);
+        Serial.print("Temp:");
+        Serial.println(temperature);
+        Serial.print("Temp2:");
+        Serial.println(temperature2);
+#endif
+        if (temperature2 > 127)
+        {
+            return ON; // Se sottozero, torna sempre ON !!
+        }
+        if ((int)temperature < (int)ValueLimitLow)
+        {
+            return ON;
+        }
+        else
+        {
+            if ((int)temperature >= (int)ValueLimitHigh)
+            {
+                return OFF;
+            }
+            else
+            {
+                return DO_NOTHING;
+            }
+        }
     }
-    if ((int)temperature < (int)ValueLimitLow)
+    if ((int)MyConfig.Relais[R].ActionType == 8)
     {
-      return ON;
+        if (temperature2 > 127)
+        {
+            return OFF; // Se sottozero, torna sempre OFF !!
+        }
+        if (temperature < ValueLimitLow)
+        {
+            return OFF;
+        }
+        else
+        {
+            if (temperature >= ValueLimitHigh)
+            {
+                return ON;
+            }
+            else
+            {
+                return DO_NOTHING;
+            }
+        }
     }
-    else
+    if ((int)MyConfig.Relais[R].ActionType == 9)
     {
-      if ((int)temperature >= (int)ValueLimitHigh)
-      {
-        return OFF;
-      }
-      else
-      {
-        return DO_NOTHING;
-      }
+        if (humidity < ValueLimitLow)
+        {
+            return ON;
+        }
+        else
+        {
+            if (humidity >= ValueLimitHigh)
+            {
+                return OFF;
+            }
+            else
+            {
+                return DO_NOTHING;
+            }
+        }
     }
-  }
-  if ((int)MyConfig.Relais[R].ActionType == 8)
-  {
-    if (temperature2 > 127)
+    if ((int)MyConfig.Relais[R].ActionType == 10)
     {
-      return OFF; // Se sottozero, torna sempre OFF !!
+        if (humidity < ValueLimitLow)
+        {
+            return OFF;
+        }
+        else
+        {
+            if (humidity >= ValueLimitHigh)
+            {
+                return ON;
+            }
+            else
+            {
+                return DO_NOTHING;
+            }
+        }
     }
-    if (temperature < ValueLimitLow)
-    {
-      return OFF;
-    }
-    else
-    {
-      if (temperature >= ValueLimitHigh)
-      {
-        return ON;
-      }
-      else
-      {
-        return DO_NOTHING;
-      }
-    }
-  }
-  if ((int)MyConfig.Relais[R].ActionType == 9)
-  {
-    if (humidity < ValueLimitLow)
-    {
-      return ON;
-    }
-    else
-    {
-      if (humidity >= ValueLimitHigh)
-      {
-        return OFF;
-      }
-      else
-      {
-        return DO_NOTHING;
-      }
-    }
-  }
-  if ((int)MyConfig.Relais[R].ActionType == 10)
-  {
-
-    if (humidity < ValueLimitLow)
-    {
-      return OFF;
-    }
-    else
-    {
-      if (humidity >= ValueLimitHigh)
-      {
-        return ON;
-      }
-      else
-      {
-        return DO_NOTHING;
-      }
-    }
-  }
-  return DO_NOTHING;
+    return DO_NOTHING;
 }
 
 boolean ReadTemp()
 {
-  if (!dht11.read(PIN_DHT11, &temperature, &humidity, data))
-  {
-    humidity2 = b2byte(data + 8);
-    temperature2 = b2byte(data + 24);
-    return true;
-  }
-  return false;
+    if (!dht11.read(PIN_DHT11, &temperature, &humidity, data))
+    {
+        humidity2 = b2byte(data + 8);
+        temperature2 = b2byte(data + 24);
+        return true;
+    }
+    return false;
 }
 
 void DisplayTemp()
 {
-  char buffer[32];
-  byte Sign = '+';
-  if (ReadTemp())
-  {
-    if (temperature2 > 127)
+    char buffer[32];
+    byte Sign = '+';
+    if (ReadTemp())
     {
-      Sign = '-';
+        if (temperature2 > 127)
+        {
+            Sign = '-';
+        }
+        lcd.setCursor(0, 1);
+        if (TempOrHumidity == false)
+            sprintf(buffer, "T%c%2d.%01d%c", Sign, temperature, temperature2 % 128, GRADI_CHAR);
+        else
+            sprintf(buffer, "H:%02d.%01d%s", humidity, humidity2, "%");
+        lcd.print(buffer);
     }
-    lcd.setCursor(0, 1);
-    if (TempOrHumidity == false)
-      sprintf(buffer, "T%c%2d.%01d%c", Sign, temperature, temperature2 % 128, GRADI_CHAR);
     else
-      sprintf(buffer, "H:%02d.%01d%s", humidity, humidity2, "%");
-    lcd.print(buffer);
-  }
-  else
-  {
-    lcd.setCursor(0, 1);
-    lcd.print("KO Temp");
-  }
+    {
+        lcd.setCursor(0, 1);
+        lcd.print("KO Temp");
+    }
 }
 
 byte b2byte(byte data[8])
 {
-  byte v = 0;
-  for (int i = 0; i < 8; i++)
-  {
-    v += data[i] << (7 - i);
-  }
-  return v;
+    byte v = 0;
+    for (int i = 0; i < 8; i++)
+    {
+        v += data[i] << (7 - i);
+    }
+    return v;
 }
 // END of DHT11 routines
 #endif
