@@ -1067,13 +1067,14 @@ void ToggleRelais(byte index)
 }
 byte CheckPeriod(int R)
 {
-    DateTime tStartTime, tStartPeriod, tEndPeriod;
+    DateTime tStartTime, tStartPeriod, tEndPeriod, tMaxEndPeriod;
     TimeSpan tSpanPeriod, tSpanDuration;
 
     if (bit_is_clear(MyConfig.Relais[R].WeekFlags, now.dayOfTheWeek()))
     {
         return OFF;
     }
+    tMaxEndPeriod = DateTime(now.year(), now.month(), now.day(), 23, 59, 59); // max end period: midnight of today
     switch (MyConfig.Relais[R].ActionType)
     {
     case 2:
@@ -1100,7 +1101,7 @@ byte CheckPeriod(int R)
         tEndPeriod = tEndPeriod + tSpanPeriod;
         if (tEndPeriod.day() != now.day())
             break;
-    } while (tEndPeriod < now);
+    } while ((tEndPeriod < now) || (tEndPeriod < tMaxEndPeriod));
     tStartPeriod = tEndPeriod - tSpanDuration;
 #ifdef DEBUG_ON
     Serial.print("Relais ");
@@ -1110,6 +1111,13 @@ byte CheckPeriod(int R)
     Serial.print(" Next end: ");
     Serial.println(tEndPeriod.timestamp());
 #endif
+  if(tStartPeriod > tMaxEndPeriod) {
+#ifdef DEBUG_ON
+    Serial.print(" too late! RETURN off: ");
+    Serial.println(tEndPeriod.timestamp());
+#endif
+    return OFF;
+  }
     if ((now > tStartPeriod) && (now < tEndPeriod))
         return ON;
     return OFF;
@@ -1243,7 +1251,7 @@ byte CheckTempHumidity(int R)
     ValueLimitHigh = MyConfig.Relais[R].Data2.TempOff;
 #ifdef DEBUG_ON
     Serial.print("Relais:");
-    Serial.println(R);
+    Serial.println(R+1);
     Serial.print("Action:");
     Serial.println(MyConfig.Relais[R].ActionType);
 #endif
