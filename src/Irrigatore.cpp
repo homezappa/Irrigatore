@@ -1,9 +1,11 @@
 /* *********************************************************************************
-* ZAP Irrigatore 1.0
+* ZAP Irrigatore 1.4
+* Correzione bug calcolo periodi e configurazione giorni settimana per tipi azione 5 e 6
+*
 * Schetch per pilotare fino a 8 relais indicando, per ognuno di essi, che azione 
 * fare e quando.
-* Per ora viene supportato il pilotaggio dei relais tramite I2C solamente (senza libreria, pilotando direttamente Wire).
-* Nella prossima release si potranno pilotare anche relais collegati direttamente alle porte digitali.
+* E' supportato il pilotaggio dei relais tramite I2C  (senza libreria, pilotando direttamente Wire).
+* o anche relais collegati direttamente alle porte digitali.
 * 
 * Previsto anche l'inserimento opzionale di un sensore DHT11 per controllare la temperatura
 * o l'umidità.
@@ -35,8 +37,13 @@
 // #define DHT11_PRESENT 1
 /* ************************************* */
 
+/* if you want turn off the display after some time (defined forward), uncomment next line */
+// #define DIM_DISPLAY 1
+/* ************************************* */
+
+
 /* Number of relaises to drive */
-#define NUM_RELAISES 8
+#define NUM_RELAISES 4
 /* If relaises connected via I2C define address and presence */
 #define I2C_RELAISES 1
 /* ********************************************************* */
@@ -171,6 +178,7 @@ Config MyConfig;
 
 uint8_t lastSecond = 0;
 uint32_t last_check = 0;
+boolean ledON   = false;
 #ifdef DHT11_PRESENT
 boolean TempOrHumidity = false;
 #endif
@@ -319,6 +327,9 @@ void setup()
 #ifdef DEBUG_ON
     Serial.begin(9600);
 #endif
+/* just to say "I'm alive!" */
+    pinMode(LED_BUILTIN, OUTPUT);
+
     Wire.begin();
     Wire.beginTransmission(LCD_ADDRESS);
     error = Wire.endTransmission();
@@ -407,11 +418,12 @@ void loop()
 
     currentMillis = millis();
     now = RTC.now();
-
+#ifdef  DIM_DISPLAY
     if (currentMillis > (timeStartDisplay + TIMER_DISPLAY))
     {
         lcd.setBacklight(BACKLIGHT_OFF);
     }
+#endif
     lettera = customKeypad.getKey();
     if (now.second() != lastSecond)
     {
@@ -421,8 +433,10 @@ void loop()
     }
     if (lettera)
     {
+#ifdef  DIM_DISPLAY        
         lcd.setBacklight(BACKLIGHT_ON);
         timeStartDisplay = currentMillis;
+#endif
         if (MyConfig.STATUS == MANUAL)
         {
             switch (lettera)
@@ -519,7 +533,13 @@ void loop()
         {
 
             last_check = now.unixtime();
-
+            if (ledON == false) {
+                ledON = true;
+                digitalWrite(LED_BUILTIN, HIGH);
+            } else {
+                ledON = false;
+                digitalWrite(LED_BUILTIN, LOW);
+            }
 #ifdef DHT11_PRESENT
             if (TempOrHumidity == false) // just to flip temp and humidity on display every second
                 TempOrHumidity = true;
@@ -575,6 +595,8 @@ void loop()
                 }
                 break;
 #endif
+                default:
+                break;
                 }
             }
             DriveRelays();
@@ -781,7 +803,7 @@ void ConfigureRelayData(int R)
             sprintf(buf, RELAIS_PROMPT_6, R);
             dato = getInputInt(buf, (int)MyConfig.Relais[v].Data4.Duration, 5, dato);
             MyConfig.Relais[v].Data4.Duration = dato;
-            if (action == 4)
+            if (action == 5)
             {
                 getInputWeek(v);
             }
@@ -802,7 +824,7 @@ void ConfigureRelayData(int R)
             sprintf(buf, RELAIS_PROMPT_6, R);
             dato = getInputInt(buf, (int)MyConfig.Relais[v].Data4.Duration, 5, ((dato * 60) > 240) ? 120 : dato * 60);
             MyConfig.Relais[v].Data4.Duration = dato;
-            if (action == 4)
+            if (action == 6)
             {
                 getInputWeek(v);
             }
@@ -1095,13 +1117,29 @@ byte CheckPeriod(int R)
     tEndPeriod = tStartPeriod + tSpanDuration;
     if (tEndPeriod > now)
         return ON;
+
+#ifdef DEBUG_ON
+    Serial.print("Relais ");
+    Serial.print(R);
+    Serial.print(" Start Time: ");
+    Serial.print(tStartPeriod.timestamp());
+    Serial.print(" End Time: ");
+    Serial.println(tEndPeriod.timestamp());
+#endif
+
     // check for next period
     do
     {
         tEndPeriod = tEndPeriod + tSpanPeriod;
+#ifdef DEBUG_ON
+    Serial.print("Relais ");
+    Serial.print(R);
+    Serial.print(" New End Period: ");
+    Serial.println(tEndPeriod.timestamp());
+#endif
         if (tEndPeriod.day() != now.day())
             break;
-    } while ((tEndPeriod < now) || (tEndPeriod < tMaxEndPeriod));
+    } while ((tEndPeriod < now) && (tEndPeriod < tMaxEndPeriod));
     tStartPeriod = tEndPeriod - tSpanDuration;
 #ifdef DEBUG_ON
     Serial.print("Relais ");
