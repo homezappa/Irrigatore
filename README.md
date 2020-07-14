@@ -42,7 +42,7 @@ SE DHT11 PRESENTE:
 - 10:Acceso se Umidità > x, spento se < y
 
 # Possibilità di configurazione da keypad:
-- Un tasto qualsiasi per riaccendere il display che si spegne dopo un minuto
+- Un tasto qualsiasi per riaccendere il display che si spegne dopo un minuto (questo comportamento è configurabile via #define)
 - Tasto 'A' : switch Automatico/Manuale. Se in Manuale, allora i tasti da 1 a 8 fanno cambiare stato al relais relativo.
 - Tasto 'D' : Menu: 
   - A: Vedi configurazione relais
