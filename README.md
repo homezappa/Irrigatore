@@ -60,4 +60,5 @@ SE DHT11 PRESENTE:
  - SimpleDHT
  # Note:
  Ad ogni configurazione effettuata, essa viene salvata nella EEPROM
+ Lo schema dei collegamenti è nella cartella Documents (sia immagine png che progetto Fritzing)
    
