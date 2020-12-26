@@ -43,7 +43,7 @@
 
 
 /* Number of relaises to drive */
-#define NUM_RELAISES 4
+#define NUM_RELAISES 8
 /* If relaises connected via I2C define address and presence */
 #define I2C_RELAISES 1
 /* ********************************************************* */
